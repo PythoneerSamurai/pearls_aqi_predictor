@@ -150,12 +150,8 @@ class DatasetPipeline:
         start_date = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
 
         features_df, targets_df = self._fetch_data(start_date, end_date)
-        print(targets_df.head())
 
         merged_df = pd.merge(features_df, targets_df, on='datetime', how='inner')
         engineered_df = self._engineer_features(merged_df)
 
         self._store_in_feature_store(engineered_df)
-
-
-DatasetPipeline().run_historical_backfill()
