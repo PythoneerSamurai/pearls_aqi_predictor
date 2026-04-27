@@ -6,20 +6,22 @@ from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor
 from sklearn.neighbors import KNeighborsRegressor
 from sklearn.svm import SVR
 from xgboost import XGBRegressor
+import joblib
 
 
 class TrainingPipeline:
     def __init__(self):
         load_dotenv()
 
-        project = hopsworks.login(
+        self._project = hopsworks.login(
             host='eu-west.cloud.hopsworks.ai',
             project='haroons_aqi_predictor',
             api_key_value=os.getenv("API_KEY")
         )
-        fs = project.get_feature_store()
+        self._fs = self._project.get_feature_store()
+        self._mr = self._project.get_model_registry()
 
-        fg = fs.get_or_create_feature_group(
+        fg = self._fs.get_or_create_feature_group(
             name="aqi_hourly_features",
             version=1,
             description="Hourly AQI features (weather + pollutants + temporal)",
@@ -33,12 +35,12 @@ class TrainingPipeline:
                     "surface_pressure", "precipitation", "rain", "cloud_cover",
                     "shortwave_radiation", "pm10", "pm2_5", "carbon_monoxide", "nitrogen_dioxide",
                     "sulphur_dioxide", "ozone", "us_aqi"]
-        features = fg.select(features=features)
+        query = fg.select(features)
 
-        self._feature_view = fs.get_or_create_feature_view(
+        self._feature_view = self._fs.get_or_create_feature_view(
             name='aqi_feature_view',
             version=1,
-            query=features,
+            query=query,
             labels=["us_aqi"],
         )
 
@@ -53,13 +55,27 @@ class TrainingPipeline:
 
         return X_train, y_train
 
+    def _save_model_to_registry(self, model, model_name):
+        model_dir = f"/tmp/{model_name}"
+        os.makedirs(model_dir, exist_ok=True)
+        model_path = f"{model_dir}/{model_name}.pkl"
+        joblib.dump(model, model_path)
+
+        aqi_model = self._mr.sklearn.create_model(
+            name=model_name,
+            description=f"AQI prediction model using {model_name}",
+        )
+
+        aqi_model.save(model_dir)
+        os.rmdir(model_dir)
+
     def _fit_random_forest(self, X_train, y_train):
-        random_forest_model = RandomForestRegressor()
+        random_forest_model = RandomForestRegressor(n_estimators=100, random_state=42)
         random_forest_model.fit(X_train, y_train)
         return random_forest_model
 
     def _fit_gradient_boosting(self, X_train, y_train):
-        gradient_boosting_model = GradientBoostingRegressor()
+        gradient_boosting_model = GradientBoostingRegressor(n_estimators=100, random_state=42)
         gradient_boosting_model.fit(X_train, y_train)
         return gradient_boosting_model
 
@@ -69,21 +85,42 @@ class TrainingPipeline:
         return svr_model
 
     def _fit_knn(self, X_train, y_train):
-        knn_model = KNeighborsRegressor()
+        knn_model = KNeighborsRegressor(n_neighbors=5)
         knn_model.fit(X_train, y_train)
         return knn_model
 
     def _fit_xgboost(self, X_train, y_train):
-        xgb_model = XGBRegressor()
+        xgb_model = XGBRegressor(n_estimators=100, random_state=42)
         xgb_model.fit(X_train, y_train)
         return xgb_model
 
     def train(self):
         X_train, y_train = self._split_data()
-        random_forest_model = self._fit_random_forest(X_train, y_train)
-        gradient_boosting_model = self._fit_gradient_boosting(X_train, y_train)
-        svr_model = self._fit_svr(X_train, y_train)
-        knn_model = self._fit_knn(X_train, y_train)
-        xgb_model = self._fit_xgboost(X_train, y_train)
 
-        return random_forest_model, gradient_boosting_model, svr_model, knn_model, xgb_model
+        random_forest_model = self._fit_random_forest(X_train, y_train)
+        self._save_model_to_registry(random_forest_model, "random_forest")
+
+        gradient_boosting_model = self._fit_gradient_boosting(X_train, y_train)
+        self._save_model_to_registry(gradient_boosting_model, "gradient_boosting")
+
+        svr_model = self._fit_svr(X_train, y_train)
+        self._save_model_to_registry(svr_model, "svr")
+
+        knn_model = self._fit_knn(X_train, y_train)
+        self._save_model_to_registry(knn_model, "knn")
+
+        xgb_model = self._fit_xgboost(X_train, y_train)
+        self._save_model_to_registry(xgb_model, "xgboost")
+
+        return {
+            'random_forest': random_forest_model,
+            'gradient_boosting': gradient_boosting_model,
+            'svr': svr_model,
+            'knn': knn_model,
+            'xgboost': xgb_model
+        }
+
+
+if __name__ == "__main__":
+    pipeline = TrainingPipeline()
+    pipeline.train()
