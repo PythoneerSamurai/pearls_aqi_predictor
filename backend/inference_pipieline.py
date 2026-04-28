@@ -121,9 +121,10 @@ class InferencePipeline:
 
         for model_name in model_names:
             model = self._mr.get_model(model_name, version=1)
-            model_dir = model.download()
+            model_dir = model.download(local_path="temp")
             loaded_model = joblib.load(f"{model_dir}/{model_name}.pkl")
             models[model_name] = loaded_model
+            os.remove(f"{model_dir}/{model_name}.pkl")
 
         return models
 
