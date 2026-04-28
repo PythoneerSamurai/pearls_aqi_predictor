@@ -1,4 +1,6 @@
 import os
+from typing import Any
+
 import joblib
 from datetime import datetime, timedelta
 
@@ -7,6 +9,7 @@ import pandas as pd
 import openmeteo_requests
 import requests_cache
 from dotenv import load_dotenv
+from pandas.core.interchange.dataframe_protocol import DataFrame
 from retry_requests import retry
 import numpy as np
 
@@ -29,7 +32,7 @@ class InferencePipeline:
         self._weather_features_url = "https://api.open-meteo.com/v1/forecast"
         self._aqi_features_url = "https://air-quality-api.open-meteo.com/v1/air-quality"
 
-    def _fetch_forecast_data(self, days_ahead: int = 3):
+    def _fetch_forecast_data(self, days_ahead: int = 3) -> DataFrame:
         start_date = datetime.now().strftime("%Y-%m-%d")
         end_date = (datetime.now() + timedelta(days=days_ahead)).strftime("%Y-%m-%d")
 
@@ -83,9 +86,10 @@ class InferencePipeline:
             features_data[feature] = hourly_raw_targets.Variables(index).ValuesAsNumpy()
 
         df = pd.DataFrame(features_data)
+        
         return df
 
-    def _engineer_features(self, df):
+    def _engineer_features(self, df: DataFrame) -> DataFrame:
         df['datetime'] = df['datetime'].dt.tz_convert('Asia/Karachi')
         df = df.sort_values('datetime').reset_index(drop=True)
 
@@ -115,7 +119,7 @@ class InferencePipeline:
 
         return df
 
-    def _load_models(self):
+    def _load_models(self) -> dict[str, Any]:
         model_names = ["random_forest", "gradient_boosting", "svr", "knn", "xgboost"]
         models = {}
 
@@ -128,7 +132,7 @@ class InferencePipeline:
 
         return models
 
-    def predict(self, days_ahead: int = 3):
+    def predict(self, days_ahead: int = 3) -> DataFrame:
         forecast_df = self._fetch_forecast_data(days_ahead)
         forecast_df = self._engineer_features(forecast_df)
 
@@ -156,7 +160,7 @@ class InferencePipeline:
 
         return predictions_df
 
-    def get_daily_summary(self, predictions_df):
+    def get_daily_summary(self, predictions_df) -> DataFrame:
         predictions_df['date'] = predictions_df['datetime'].dt.date
 
         daily_summary = predictions_df.groupby('date').agg({
@@ -169,26 +173,3 @@ class InferencePipeline:
         }).round(2)
 
         return daily_summary
-
-
-if __name__ == "__main__":
-    pipeline = InferencePipeline()
-
-    # Generate predictions for next 3 days
-    predictions = pipeline.predict(days_ahead=3)
-
-    print("\n" + "=" * 70)
-    print("HOURLY PREDICTIONS (First 24 hours)")
-    print("=" * 70)
-    print(predictions.head(24)[['datetime', 'ensemble_prediction']].to_string(index=False))
-
-    print("\n" + "=" * 70)
-    print("DAILY SUMMARY")
-    print("=" * 70)
-    daily = pipeline.get_daily_summary(predictions)
-    print(daily)
-
-    # Save predictions to CSV for the frontend
-    predictions.to_csv('aqi_predictions.csv', index=False)
-    daily.to_csv('aqi_daily_predictions.csv')
-    print("\n✓ Predictions saved to aqi_predictions.csv and aqi_daily_predictions.csv")
