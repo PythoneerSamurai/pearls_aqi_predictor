@@ -124,7 +124,10 @@ class InferencePipeline:
         models = {}
 
         for model_name in model_names:
-            model = self._mr.get_model(model_name, version=1)
+            if model_name == "random_forest":
+                model = self._mr.get_model(model_name, version=2)
+            else:
+                model = self._mr.get_model(model_name, version=1)
             model_dir = model.download(local_path="temp")
             loaded_model = joblib.load(f"{model_dir}/{model_name}.pkl")
             models[model_name] = loaded_model
@@ -138,11 +141,15 @@ class InferencePipeline:
 
         models = self._load_models()
 
-        feature_cols = ["temperature_2m", "relative_humidity_2m", "dew_point_2m",
-                        "wind_speed_10m", "wind_direction_10m", "wind_gusts_10m",
-                        "surface_pressure", "precipitation", "rain", "cloud_cover",
-                        "shortwave_radiation", "pm10", "pm2_5", "carbon_monoxide",
-                        "nitrogen_dioxide", "sulphur_dioxide", "ozone"]
+        feature_cols = [
+            "temperature_2m", "relative_humidity_2m", "dew_point_2m",
+            "wind_speed_10m", "wind_direction_10m", "wind_gusts_10m",
+            "surface_pressure", "precipitation", "rain", "cloud_cover",
+            "shortwave_radiation", "pm10", "pm2_5", "carbon_monoxide",
+            "nitrogen_dioxide", "sulphur_dioxide", "ozone",
+            "hour", "day_of_week", "month", "day_of_year", "is_weekend", "is_rush_hour",
+            "season", "wind_u", "wind_v", "is_stagnant", "temp_humidity_product"
+        ]
 
         X = forecast_df[feature_cols].fillna(forecast_df[feature_cols].mean())
 
@@ -173,3 +180,8 @@ class InferencePipeline:
         }).round(2)
 
         return daily_summary
+
+
+pp = InferencePipeline()
+pd = pp.predict(3)
+print(pp.get_daily_summary(pd))
