@@ -87,7 +87,7 @@ class TrainingPipeline:
             y_train: TrainingDatasetDataFrameTypes
     ) -> RandomForestRegressor:
 
-        random_forest_model = RandomForestRegressor(n_estimators=100, random_state=42)
+        random_forest_model = RandomForestRegressor(n_estimators=100, random_state=42, n_jobs=-1)
         random_forest_model.fit(X_train, y_train)
         return random_forest_model
 
@@ -117,7 +117,7 @@ class TrainingPipeline:
             y_train: TrainingDatasetDataFrameTypes
     ) -> KNeighborsRegressor:
 
-        knn_model = KNeighborsRegressor(n_neighbors=5)
+        knn_model = KNeighborsRegressor(n_neighbors=40, n_jobs=-1)
         knn_model.fit(X_train, y_train)
         return knn_model
 
@@ -127,7 +127,7 @@ class TrainingPipeline:
             y_train: TrainingDatasetDataFrameTypes
     ) -> XGBRegressor:
 
-        xgb_model = XGBRegressor(n_estimators=100, random_state=42)
+        xgb_model = XGBRegressor(n_estimators=100, random_state=42, n_jobs=-1)
         xgb_model.fit(X_train, y_train)
         return xgb_model
 
