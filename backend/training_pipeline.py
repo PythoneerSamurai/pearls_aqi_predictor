@@ -1,10 +1,10 @@
-import os
-import shutil
+from os import getenv, makedirs
+from shutil import rmtree
 
-import hopsworks
-import joblib
 from dotenv import load_dotenv, set_key
+from hopsworks import login
 from hsfs.feature_view import TrainingDatasetDataFrameTypes
+from joblib import dump
 from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor
 from sklearn.neighbors import KNeighborsRegressor
 from sklearn.svm import SVR
@@ -15,10 +15,10 @@ class TrainingPipeline:
     def __init__(self):
         load_dotenv()
 
-        self._project = hopsworks.login(
+        self._project = login(
             host='eu-west.cloud.hopsworks.ai',
             project='haroons_aqi_predictor',
-            api_key_value=os.getenv("API_KEY")
+            api_key_value=getenv("API_KEY")
         )
 
     def _fetch_and_split_data(self, test_size: float = 0.1) -> tuple[
@@ -67,19 +67,19 @@ class TrainingPipeline:
         mr = self._project.get_model_registry()
 
         model_dir = f"/tmp/{model_name}"
-        os.makedirs(model_dir, exist_ok=True)
+        makedirs(model_dir, exist_ok=True)
         model_path = f"{model_dir}/{model_name}.pkl"
-        joblib.dump(model, model_path)
+        dump(model, model_path)
 
-        set_key(".env", "MODEL_VERSION", str(int(os.getenv("MODEL_VERSION")) + 1))
+        set_key(".env", "MODEL_VERSION", str(int(getenv("MODEL_VERSION")) + 1))
 
         aqi_model = mr.sklearn.create_model(
             name=model_name,
-            version=int(os.getenv("MODEL_VERSION")),
+            version=int(getenv("MODEL_VERSION")),
             description=f"AQI prediction model using {model_name}",
         )
         aqi_model.save(model_dir)
-        shutil.rmtree(model_dir)
+        rmtree(model_dir)
 
     def _fit_random_forest(
             self,

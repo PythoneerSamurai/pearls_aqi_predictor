@@ -1,15 +1,14 @@
-import os
 from datetime import datetime, timedelta
+from os import getenv, remove
 from typing import Any
 
-import hopsworks
-import joblib
-import numpy as np
-import openmeteo_requests
-import pandas as pd
-import requests_cache
 from dotenv import load_dotenv
-from pandas.core.interchange.dataframe_protocol import DataFrame
+from hopsworks import login
+from joblib import load
+from numpy import cos, sin, radians, mean
+from openmeteo_requests import Client
+from pandas import DataFrame, date_range, to_datetime, Timedelta
+from requests_cache import CachedSession
 from retry_requests import retry
 
 
@@ -17,10 +16,10 @@ class InferencePipeline:
     def __init__(self):
         load_dotenv()
 
-        self._project = hopsworks.login(
+        self._project = login(
             host='eu-west.cloud.hopsworks.ai',
             project='haroons_aqi_predictor',
-            api_key_value=os.getenv("API_KEY")
+            api_key_value=getenv("API_KEY")
         )
         self._fs = self._project.get_feature_store()
         self._mr = self._project.get_model_registry()
@@ -60,9 +59,9 @@ class InferencePipeline:
             "timezone": "auto",
         }
 
-        cache_session = requests_cache.CachedSession('.cache', expire_after=3600)
+        cache_session = CachedSession('.cache', expire_after=3600)
         retry_session = retry(cache_session, retries=5, backoff_factor=0.2)
-        openmeteo = openmeteo_requests.Client(session=retry_session)
+        openmeteo = Client(session=retry_session)
 
         raw_weather_features = openmeteo.weather_api(url=self._weather_features_url, params=weather_feature_params)[0]
         raw_aqi_features = openmeteo.weather_api(url=self._aqi_features_url, params=aqi_feature_params)[0]
@@ -71,10 +70,10 @@ class InferencePipeline:
         hourly_raw_targets = raw_aqi_features.Hourly()
 
         features_data = {
-            "datetime": pd.date_range(
-                start=pd.to_datetime(hourly_raw_features.Time(), unit="s", utc=True),
-                end=pd.to_datetime(hourly_raw_features.TimeEnd(), unit="s", utc=True),
-                freq=pd.Timedelta(seconds=hourly_raw_features.Interval()),
+            "datetime": date_range(
+                start=to_datetime(hourly_raw_features.Time(), unit="s", utc=True),
+                end=to_datetime(hourly_raw_features.TimeEnd(), unit="s", utc=True),
+                freq=Timedelta(seconds=hourly_raw_features.Interval()),
                 inclusive="left"
             )
         }
@@ -84,7 +83,7 @@ class InferencePipeline:
         for index, feature in enumerate(aqi_feature_params["hourly"]):
             features_data[feature] = hourly_raw_targets.Variables(index).ValuesAsNumpy()
 
-        df = pd.DataFrame(features_data)
+        df = DataFrame(features_data)
         
         return df
 
@@ -111,8 +110,8 @@ class InferencePipeline:
 
         df['season'] = df['month'].apply(get_season)
 
-        df['wind_u'] = df['wind_speed_10m'] * np.cos(np.radians(df['wind_direction_10m']))
-        df['wind_v'] = df['wind_speed_10m'] * np.sin(np.radians(df['wind_direction_10m']))
+        df['wind_u'] = df['wind_speed_10m'] * cos(radians(df['wind_direction_10m']))
+        df['wind_v'] = df['wind_speed_10m'] * sin(radians(df['wind_direction_10m']))
         df['is_stagnant'] = (df['wind_speed_10m'] < 2).astype(int)
         df['temp_humidity_product'] = df['temperature_2m'] * df['relative_humidity_2m']
 
@@ -123,12 +122,12 @@ class InferencePipeline:
         models = {}
 
         for model_name in model_names:
-            model = self._mr.get_models(model_name, version=int(os.getenv("MODEL_VERSION")))
+            model = self._mr.get_models(model_name, version=int(getenv("MODEL_VERSION")))
             models.update({model_name: model})
             model_dir = model.download(local_path="temp")
-            loaded_model = joblib.load(f"{model_dir}/{model_name}.pkl")
+            loaded_model = load(f"{model_dir}/{model_name}.pkl")
             models[model_name] = loaded_model
-            os.remove(f"{model_dir}/{model_name}.pkl")
+            remove(f"{model_dir}/{model_name}.pkl")
 
         return models
 
@@ -158,9 +157,9 @@ class InferencePipeline:
             predictions[f'{model_name}_prediction'] = model.predict(X)
 
         model_preds = [predictions[f'{name}_prediction'] for name in models.keys()]
-        predictions['ensemble_prediction'] = np.mean(model_preds, axis=0)
+        predictions['ensemble_prediction'] = mean(model_preds, axis=0)
 
-        predictions_df = pd.DataFrame(predictions)
+        predictions_df = DataFrame(predictions)
 
         return predictions_df
 

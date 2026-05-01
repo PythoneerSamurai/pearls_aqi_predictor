@@ -1,24 +1,23 @@
-import os
 from datetime import datetime, timedelta
+from os import getenv
 
-import openmeteo_requests
-import pandas as pd
-import requests_cache
-from pandas import DataFrame
-from retry_requests import retry
 from dotenv import load_dotenv
-import numpy as np
-import hopsworks
+from hopsworks import login
+from numpy import cos, sin, radians
+from openmeteo_requests import Client
+from pandas import DataFrame, date_range, to_datetime, merge, Timedelta
+from requests_cache import CachedSession
+from retry_requests import retry
 
 
 class DatasetPipeline:
     def __init__(self):
         load_dotenv()
 
-        self._project = hopsworks.login(
+        self._project = login(
             host='eu-west.cloud.hopsworks.ai',
             project='haroons_aqi_predictor',
-            api_key_value=os.getenv("API_KEY"),
+            api_key_value=getenv("API_KEY"),
         )
         self._fs = self._project.get_feature_store()
 
@@ -55,9 +54,9 @@ class DatasetPipeline:
             "timezone": "auto",
         }
 
-        cache_session = requests_cache.CachedSession('.cache', expire_after=3600)
+        cache_session = CachedSession('.cache', expire_after=3600)
         retry_session = retry(cache_session, retries=5, backoff_factor=0.2)
-        openmeteo = openmeteo_requests.Client(session=retry_session)
+        openmeteo = Client(session=retry_session)
 
         raw_features = openmeteo.weather_api(url=self._features_url, params=feature_params)[0]
         raw_targets = openmeteo.weather_api(url=self._targets_url, params=target_params)[0]
@@ -66,10 +65,10 @@ class DatasetPipeline:
         hourly_raw_targets = raw_targets.Hourly()
 
         features_data = {
-            "datetime": pd.date_range(
-                start=pd.to_datetime(hourly_raw_features.Time(), unit="s", utc=True),
-                end=pd.to_datetime(hourly_raw_features.TimeEnd(), unit="s", utc=True),
-                freq=pd.Timedelta(seconds=hourly_raw_features.Interval()),
+            "datetime": date_range(
+                start=to_datetime(hourly_raw_features.Time(), unit="s", utc=True),
+                end=to_datetime(hourly_raw_features.TimeEnd(), unit="s", utc=True),
+                freq=Timedelta(seconds=hourly_raw_features.Interval()),
                 inclusive="left"
             )
         }
@@ -77,10 +76,10 @@ class DatasetPipeline:
             features_data[feature] = hourly_raw_features.Variables(index).ValuesAsNumpy()
 
         targets_data = {
-            "datetime": pd.date_range(
-                start=pd.to_datetime(hourly_raw_targets.Time(), unit="s", utc=True),
-                end=pd.to_datetime(hourly_raw_targets.TimeEnd(), unit="s", utc=True),
-                freq=pd.Timedelta(seconds=hourly_raw_targets.Interval()),
+            "datetime": date_range(
+                start=to_datetime(hourly_raw_targets.Time(), unit="s", utc=True),
+                end=to_datetime(hourly_raw_targets.TimeEnd(), unit="s", utc=True),
+                freq=Timedelta(seconds=hourly_raw_targets.Interval()),
                 inclusive="left"
             )
         }
@@ -90,8 +89,8 @@ class DatasetPipeline:
             features_data[feature] = hourly_raw_targets.Variables(index).ValuesAsNumpy()
 
         targets_data["us_aqi"] = hourly_raw_targets.Variables(6).ValuesAsNumpy()
-        
-        return pd.DataFrame(features_data), pd.DataFrame(targets_data)
+
+        return DataFrame(features_data), DataFrame(targets_data)
 
     def _engineer_features(self, df: DataFrame) -> DataFrame:
         df['datetime'] = df['datetime'].dt.tz_convert('Asia/Karachi')
@@ -116,8 +115,8 @@ class DatasetPipeline:
 
         df['season'] = df['month'].apply(get_season)
 
-        df['wind_u'] = df['wind_speed_10m'] * np.cos(np.radians(df['wind_direction_10m']))
-        df['wind_v'] = df['wind_speed_10m'] * np.sin(np.radians(df['wind_direction_10m']))
+        df['wind_u'] = df['wind_speed_10m'] * cos(radians(df['wind_direction_10m']))
+        df['wind_v'] = df['wind_speed_10m'] * sin(radians(df['wind_direction_10m']))
         df['is_stagnant'] = (df['wind_speed_10m'] < 2).astype(int)
         df['temp_humidity_product'] = df['temperature_2m'] * df['relative_humidity_2m']
 
@@ -140,7 +139,7 @@ class DatasetPipeline:
 
         features_df, targets_df = self._fetch_data(start_date, end_date)
 
-        merged_df = pd.merge(features_df, targets_df, on='datetime', how='inner')
+        merged_df = merge(features_df, targets_df, on='datetime', how='inner')
         engineered_df = self._engineer_features(merged_df)
 
         self._store_in_feature_store(engineered_df)
@@ -151,7 +150,7 @@ class DatasetPipeline:
 
         features_df, targets_df = self._fetch_data(start_date, end_date)
 
-        merged_df = pd.merge(features_df, targets_df, on='datetime', how='inner')
+        merged_df = merge(features_df, targets_df, on='datetime', how='inner')
         engineered_df = self._engineer_features(merged_df)
 
         self._store_in_feature_store(engineered_df)
