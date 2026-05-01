@@ -2,13 +2,13 @@ import os
 import shutil
 
 import hopsworks
+import joblib
+from dotenv import load_dotenv, set_key
 from hsfs.feature_view import TrainingDatasetDataFrameTypes
-from dotenv import load_dotenv
 from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor
 from sklearn.neighbors import KNeighborsRegressor
 from sklearn.svm import SVR
 from xgboost import XGBRegressor
-import joblib
 
 
 class TrainingPipeline:
@@ -71,8 +71,11 @@ class TrainingPipeline:
         model_path = f"{model_dir}/{model_name}.pkl"
         joblib.dump(model, model_path)
 
+        set_key(".env", "MODEL_VERSION", str(int(os.getenv("MODEL_VERSION")) + 1))
+
         aqi_model = mr.sklearn.create_model(
             name=model_name,
+            version=int(os.getenv("MODEL_VERSION")),
             description=f"AQI prediction model using {model_name}",
         )
         aqi_model.save(model_dir)
@@ -145,6 +148,3 @@ class TrainingPipeline:
 
         xgb_model = self._fit_xgboost(X_train, y_train)
         self._save_model_to_registry(xgb_model, "xgboost")
-
-
-TrainingPipeline().train()

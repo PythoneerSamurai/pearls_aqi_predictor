@@ -1,17 +1,16 @@
 import os
+from datetime import datetime, timedelta
 from typing import Any
 
-import joblib
-from datetime import datetime, timedelta
-
 import hopsworks
-import pandas as pd
+import joblib
+import numpy as np
 import openmeteo_requests
+import pandas as pd
 import requests_cache
 from dotenv import load_dotenv
 from pandas.core.interchange.dataframe_protocol import DataFrame
 from retry_requests import retry
-import numpy as np
 
 
 class InferencePipeline:
@@ -124,10 +123,8 @@ class InferencePipeline:
         models = {}
 
         for model_name in model_names:
-            if model_name == "random_forest":
-                model = self._mr.get_model(model_name, version=2)
-            else:
-                model = self._mr.get_model(model_name, version=1)
+            model = self._mr.get_models(model_name, version=int(os.getenv("MODEL_VERSION")))
+            models.update({model_name: model})
             model_dir = model.download(local_path="temp")
             loaded_model = joblib.load(f"{model_dir}/{model_name}.pkl")
             models[model_name] = loaded_model
@@ -180,8 +177,3 @@ class InferencePipeline:
         }).round(2)
 
         return daily_summary
-
-
-pp = InferencePipeline()
-pd = pp.predict(3)
-print(pp.get_daily_summary(pd))
