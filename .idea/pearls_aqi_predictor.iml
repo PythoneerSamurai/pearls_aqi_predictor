@@ -3,6 +3,7 @@
   <component name="NewModuleRootManager">
     <content url="file://$MODULE_DIR$">
       <excludeFolder url="file://$MODULE_DIR$/.venv" />
+      <excludeFolder url="file://$MODULE_DIR$/backend/temp" />
     </content>
     <orderEntry type="jdk" jdkName="Python 3.12 (pearls_aqi_predictor)" jdkType="Python SDK" />
     <orderEntry type="sourceFolder" forTests="false" />
