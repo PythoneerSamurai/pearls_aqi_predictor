@@ -16,8 +16,8 @@ class TrainingPipeline:
         load_dotenv()
 
         self._project = login(
-            host='eu-west.cloud.hopsworks.ai',
-            project='haroons_aqi_predictor',
+            host="eu-west.cloud.hopsworks.ai",
+            project="haroons_aqi_predictor",
             api_key_value=getenv("API_KEY")
         )
 
@@ -47,7 +47,7 @@ class TrainingPipeline:
         query = fg.select(features)
 
         feature_view = fs.get_or_create_feature_view(
-            name='aqi_feature_view',
+            name="aqi_feature_view",
             version=1,
             query=query,
             labels=["us_aqi"],
@@ -107,7 +107,7 @@ class TrainingPipeline:
             y_train: TrainingDatasetDataFrameTypes
     ) -> SVR:
 
-        svr_model = SVR(kernel='linear')
+        svr_model = SVR(kernel="linear")
         svr_model.fit(X_train, y_train)
         return svr_model
 
@@ -148,3 +148,7 @@ class TrainingPipeline:
 
         xgb_model = self._fit_xgboost(X_train, y_train)
         self._save_model_to_registry(xgb_model, "xgboost")
+        
+
+if name == "__main__":
+    TrainingPipeline().train()

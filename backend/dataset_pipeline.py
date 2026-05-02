@@ -15,8 +15,8 @@ class DatasetPipeline:
         load_dotenv()
 
         self._project = login(
-            host='eu-west.cloud.hopsworks.ai',
-            project='haroons_aqi_predictor',
+            host="eu-west.cloud.hopsworks.ai",
+            project="haroons_aqi_predictor",
             api_key_value=getenv("API_KEY"),
         )
         self._fs = self._project.get_feature_store()
@@ -54,7 +54,7 @@ class DatasetPipeline:
             "timezone": "auto",
         }
 
-        cache_session = CachedSession('.cache', expire_after=3600)
+        cache_session = CachedSession(".cache", expire_after=3600)
         retry_session = retry(cache_session, retries=5, backoff_factor=0.2)
         openmeteo = Client(session=retry_session)
         
@@ -66,8 +66,8 @@ class DatasetPipeline:
 
         features_data = {
             "datetime": date_range(
-                start=to_datetime(hourly_raw_features.Time(), unit="s", utc=True),
-                end=to_datetime(hourly_raw_features.TimeEnd(), unit="s", utc=True),
+                start=to_datetime(hourly_raw_features.Time(), unit='s', utc=True),
+                end=to_datetime(hourly_raw_features.TimeEnd(), unit='s', utc=True),
                 freq=Timedelta(seconds=hourly_raw_features.Interval()),
                 inclusive="left"
             )
@@ -77,8 +77,8 @@ class DatasetPipeline:
 
         targets_data = {
             "datetime": date_range(
-                start=to_datetime(hourly_raw_targets.Time(), unit="s", utc=True),
-                end=to_datetime(hourly_raw_targets.TimeEnd(), unit="s", utc=True),
+                start=to_datetime(hourly_raw_targets.Time(), unit='s', utc=True),
+                end=to_datetime(hourly_raw_targets.TimeEnd(), unit='s', utc=True),
                 freq=Timedelta(seconds=hourly_raw_targets.Interval()),
                 inclusive="left"
             )
@@ -93,15 +93,15 @@ class DatasetPipeline:
         return DataFrame(features_data), DataFrame(targets_data)
 
     def _engineer_features(self, df: DataFrame) -> DataFrame:
-        df['datetime'] = df['datetime'].dt.tz_convert('Asia/Karachi')
-        df = df.sort_values('datetime').reset_index(drop=True)
+        df["datetime"] = df["datetime"].dt.tz_convert("Asia/Karachi")
+        df = df.sort_values("datetime").reset_index(drop=True)
 
-        df['hour'] = df['datetime'].dt.hour
-        df['day_of_week'] = df['datetime'].dt.dayofweek
-        df['month'] = df['datetime'].dt.month
-        df['day_of_year'] = df['datetime'].dt.dayofyear
-        df['is_weekend'] = df['day_of_week'].isin([5, 6]).astype(int)
-        df['is_rush_hour'] = df['hour'].isin([7, 8, 17, 18]).astype(int)
+        df["hour"] = df["datetime"].dt.hour
+        df["day_of_week"] = df["datetime"].dt.dayofweek
+        df["month"] = df["datetime"].dt.month
+        df["day_of_year"] = df["datetime"].dt.dayofyear
+        df["is_weekend"] = df["day_of_week"].isin([5, 6]).astype(int)
+        df["is_rush_hour"] = df["hour"].isin([7, 8, 17, 18]).astype(int)
 
         def get_season(month):
             if month in [12, 1, 2]:
@@ -113,12 +113,12 @@ class DatasetPipeline:
             else:
                 return 3
 
-        df['season'] = df['month'].apply(get_season)
+        df["season"] = df["month"].apply(get_season)
 
-        df['wind_u'] = df['wind_speed_10m'] * cos(radians(df['wind_direction_10m']))
-        df['wind_v'] = df['wind_speed_10m'] * sin(radians(df['wind_direction_10m']))
-        df['is_stagnant'] = (df['wind_speed_10m'] < 2).astype(int)
-        df['temp_humidity_product'] = df['temperature_2m'] * df['relative_humidity_2m']
+        df["wind_u"] = df["wind_speed_10m"] * cos(radians(df["wind_direction_10m"]))
+        df["wind_v"] = df["wind_speed_10m"] * sin(radians(df["wind_direction_10m"]))
+        df["is_stagnant"] = (df["wind_speed_10m"] < 2).astype(int)
+        df["temp_humidity_product"] = df["temperature_2m"] * df["relative_humidity_2m"]
 
         return df
 
@@ -139,7 +139,7 @@ class DatasetPipeline:
 
         features_df, targets_df = self._fetch_data(start_date, end_date)
 
-        merged_df = merge(features_df, targets_df, on='datetime', how='inner')
+        merged_df = merge(features_df, targets_df, on="datetime", how="inner")
         engineered_df = self._engineer_features(merged_df)
 
         self._store_in_feature_store(engineered_df)
@@ -150,7 +150,13 @@ class DatasetPipeline:
 
         features_df, targets_df = self._fetch_data(start_date, end_date)
 
-        merged_df = merge(features_df, targets_df, on='datetime', how='inner')
+        merged_df = merge(features_df, targets_df, on="datetime", how="inner")
         engineered_df = self._engineer_features(merged_df)
 
         self._store_in_feature_store(engineered_df)
+
+
+if __name__ == "main":
+    DatasetPipeline().run_hourly_update()
+        
+

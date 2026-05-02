@@ -17,8 +17,8 @@ class InferencePipeline:
         load_dotenv()
 
         self._project = login(
-            host='eu-west.cloud.hopsworks.ai',
-            project='haroons_aqi_predictor',
+            host="eu-west.cloud.hopsworks.ai",
+            project="haroons_aqi_predictor",
             api_key_value=getenv("API_KEY")
         )
         self._fs = self._project.get_feature_store()
@@ -59,7 +59,7 @@ class InferencePipeline:
             "timezone": "auto",
         }
 
-        cache_session = CachedSession('.cache', expire_after=3600)
+        cache_session = CachedSession(".cache", expire_after=3600)
         retry_session = retry(cache_session, retries=5, backoff_factor=0.2)
         openmeteo = Client(session=retry_session)
 
@@ -88,15 +88,15 @@ class InferencePipeline:
         return df
 
     def _engineer_features(self, df: DataFrame) -> DataFrame:
-        df['datetime'] = df['datetime'].dt.tz_convert('Asia/Karachi')
-        df = df.sort_values('datetime').reset_index(drop=True)
+        df["datetime"] = df["datetime"].dt.tz_convert("Asia/Karachi")
+        df = df.sort_values("datetime").reset_index(drop=True)
 
-        df['hour'] = df['datetime'].dt.hour
-        df['day_of_week'] = df['datetime'].dt.dayofweek
-        df['month'] = df['datetime'].dt.month
-        df['day_of_year'] = df['datetime'].dt.dayofyear
-        df['is_weekend'] = df['day_of_week'].isin([5, 6]).astype(int)
-        df['is_rush_hour'] = df['hour'].isin([7, 8, 17, 18]).astype(int)
+        df["hour"] = df["datetime"].dt.hour
+        df["day_of_week"] = df["datetime"].dt.dayofweek
+        df["month"] = df["datetime"].dt.month
+        df["day_of_year"] = df["datetime"].dt.dayofyear
+        df["is_weekend"] = df["day_of_week"].isin([5, 6]).astype(int)
+        df["is_rush_hour"] = df["hour"].isin([7, 8, 17, 18]).astype(int)
 
         def get_season(month):
             if month in [12, 1, 2]:
@@ -108,12 +108,12 @@ class InferencePipeline:
             else:
                 return 3
 
-        df['season'] = df['month'].apply(get_season)
+        df["season"] = df["month"].apply(get_season)
 
-        df['wind_u'] = df['wind_speed_10m'] * cos(radians(df['wind_direction_10m']))
-        df['wind_v'] = df['wind_speed_10m'] * sin(radians(df['wind_direction_10m']))
-        df['is_stagnant'] = (df['wind_speed_10m'] < 2).astype(int)
-        df['temp_humidity_product'] = df['temperature_2m'] * df['relative_humidity_2m']
+        df["wind_u"] = df["wind_speed_10m"] * cos(radians(df["wind_direction_10m"]))
+        df["wind_v"] = df["wind_speed_10m"] * sin(radians(df["wind_direction_10m"]))
+        df["is_stagnant"] = (df["wind_speed_10m"] < 2).astype(int)
+        df["temp_humidity_product"] = df["temperature_2m"] * df["relative_humidity_2m"]
 
         return df
 
@@ -150,29 +150,29 @@ class InferencePipeline:
         X = forecast_df[feature_cols].fillna(forecast_df[feature_cols].mean())
 
         predictions = {
-            'datetime': forecast_df['datetime']
+            "datetime": forecast_df["datetime"]
         }
 
         for model_name, model in models.items():
-            predictions[f'{model_name}_prediction'] = model.predict(X)
+            predictions[f"{model_name}_prediction"] = model.predict(X)
 
-        model_preds = [predictions[f'{name}_prediction'] for name in models.keys()]
-        predictions['ensemble_prediction'] = mean(model_preds, axis=0)
+        model_preds = [predictions[f"{name}_prediction"] for name in models.keys()]
+        predictions["ensemble_prediction"] = mean(model_preds, axis=0)
 
         predictions_df = DataFrame(predictions)
 
         return predictions_df
 
     def get_daily_summary(self, predictions_df) -> DataFrame:
-        predictions_df['date'] = predictions_df['datetime'].dt.date
+        predictions_df["date"] = predictions_df["datetime"].dt.date
 
-        daily_summary = predictions_df.groupby('date').agg({
-            'random_forest_prediction': 'mean',
-            'gradient_boosting_prediction': 'mean',
-            'svr_prediction': 'mean',
-            'knn_prediction': 'mean',
-            'xgboost_prediction': 'mean',
-            'ensemble_prediction': 'mean'
+        daily_summary = predictions_df.groupby("date").agg({
+            "random_forest_prediction": "mean",
+            "gradient_boosting_prediction": "mean",
+            "svr_prediction": "mean",
+            "knn_prediction": "mean",
+            "xgboost_prediction": "mean",
+            "ensemble_prediction": "mean"
         }).round(2)
 
         return daily_summary
