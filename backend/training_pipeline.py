@@ -1,8 +1,8 @@
+import logging
 from os import getenv, makedirs
 from shutil import rmtree
-import logging
 
-from dotenv import load_dotenv, set_key
+from dotenv import load_dotenv
 from hopsworks import login
 from hsfs.feature_view import TrainingDatasetDataFrameTypes
 from joblib import dump
@@ -11,7 +11,6 @@ from sklearn.neighbors import KNeighborsRegressor
 from sklearn.svm import SVR
 from xgboost import XGBRegressor
 
-# Configure logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -95,11 +94,53 @@ class TrainingPipeline:
             logger.error(f"Failed to fetch and split data: {e}", exc_info=True)
             raise
 
+    def _delete_existing_model(self, model_name: str) -> bool:
+        try:
+            mr = self._project.get_model_registry()
+            existing_model = mr.get_model(model_name, version=1)
+            logger.info(f"Found existing model: {model_name}")
+
+            try:
+                ms = self._project.get_model_serving()
+                deployments = ms.get_deployments()
+                for deployment in deployments:
+                    if deployment.model_name == model_name:
+                        logger.info(f"Stopping deployment for {model_name}")
+                        deployment.stop()
+            except Exception as e:
+                logger.warning(f"Could not stop deployment (might not exist): {e}")
+
+            existing_model.delete()
+            logger.info(f"Successfully deleted existing model: {model_name}")
+            return True
+        except Exception as e:
+            logger.info(f"No existing model found for {model_name}: {e}")
+            return False
+
+    def _deploy_model(self, model_name: str) -> bool:
+        try:
+            mr = self._project.get_model_registry()
+
+            model = mr.get_model(model_name, version=1)
+            logger.info(f"Retrieved model {model_name} for deployment")
+
+            logger.info(f"Creating deployment for {model_name}")
+            deployment = model.deploy(environment="minimal-inference-pipeline-numls231-v1")
+            deployment.start()
+            logger.info(f"Successfully deployed model {model_name}")
+            return True
+
+        except Exception as e:
+            logger.error(f"Failed to deploy model {model_name}: {e}")
+            return False
+
     def _save_model_to_registry(self, model, model_name: str) -> None:
         logger.info(f"Saving model '{model_name}' to registry")
 
         try:
             mr = self._project.get_model_registry()
+
+            self._delete_existing_model(model_name)
 
             model_dir = f"/tmp/{model_name}"
             makedirs(model_dir, exist_ok=True)
@@ -107,17 +148,15 @@ class TrainingPipeline:
             dump(model, model_path)
             logger.debug(f"Serialized model to {model_path}")
 
-            set_key(".env", "MODEL_VERSION", str(int(getenv("MODEL_VERSION")) + 1))
-            current_version = int(getenv("MODEL_VERSION"))
-            logger.info(f"Updated MODEL_VERSION to {current_version}")
-
             aqi_model = mr.sklearn.create_model(
                 name=model_name,
-                version=current_version,
+                version=1,
                 description=f"AQI prediction model using {model_name}",
             )
             aqi_model.save(model_dir)
-            logger.info(f"Successfully saved model '{model_name}' v{current_version} to registry")
+            logger.info(f"Successfully saved model '{model_name}' to registry")
+
+            self._deploy_model(model_name)
 
             rmtree(model_dir)
             logger.debug(f"Cleaned up temporary directory {model_dir}")
@@ -235,4 +274,5 @@ class TrainingPipeline:
             raise
 
 
-TrainingPipeline().train()
+if __name__ == "__main__":
+    TrainingPipeline().train()

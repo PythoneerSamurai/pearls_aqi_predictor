@@ -12,7 +12,6 @@ from pandas import DataFrame, date_range, to_datetime, Timedelta
 from requests_cache import CachedSession
 from retry_requests import retry
 
-# Configure logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -165,13 +164,12 @@ class InferencePipeline:
         logger.info("Loading models from registry")
         model_names = ["random_forest", "gradient_boosting", "svr", "knn", "xgboost"]
         models = {}
-        model_version = int(getenv("MODEL_VERSION"))
-        logger.info(f"Loading model version: {model_version}")
+        logger.info(f"Loading model version: {1}")
 
         try:
             for model_name in model_names:
                 logger.debug(f"Loading {model_name} model")
-                model = self._mr.get_models(model_name, version=model_version)
+                model = self._mr.get_models(model_name, version=1)
                 models.update({model_name: model})
                 model_dir = model.download(local_path="temp")
                 loaded_model = load(f"{model_dir}/{model_name}.pkl")
