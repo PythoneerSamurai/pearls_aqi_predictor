@@ -1,5 +1,6 @@
 from os import getenv, makedirs
 from shutil import rmtree
+import logging
 
 from dotenv import load_dotenv, set_key
 from hopsworks import login
@@ -10,145 +11,228 @@ from sklearn.neighbors import KNeighborsRegressor
 from sklearn.svm import SVR
 from xgboost import XGBRegressor
 
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler('training_pipeline.log'),
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger(__name__)
+
 
 class TrainingPipeline:
     def __init__(self):
+        logger.info("Initializing TrainingPipeline")
         load_dotenv()
 
-        self._project = login(
-            host="eu-west.cloud.hopsworks.ai",
-            project="haroons_aqi_predictor",
-            api_key_value=getenv("API_KEY")
-        )
+        try:
+            self._project = login(
+                host="eu-west.cloud.hopsworks.ai",
+                project="haroons_aqi_predictor",
+                api_key_value=getenv("API_KEY")
+            )
+            logger.info("Successfully connected to Hopsworks project: haroons_aqi_predictor")
+        except Exception as e:
+            logger.error(f"Failed to connect to Hopsworks: {e}", exc_info=True)
+            raise
 
     def _fetch_and_split_data(self, test_size: float = 0.1) -> tuple[
         TrainingDatasetDataFrameTypes,
         TrainingDatasetDataFrameTypes,
     ]:
-        fs = self._project.get_feature_store()
-        fg = fs.get_or_create_feature_group(
-            name="aqi_hourly_features",
-            version=1,
-            description="Hourly AQI features (weather + pollutants + temporal)",
-            primary_key=["datetime"],
-            event_time="datetime",
-            online_enabled=False,
-        )
+        logger.info(f"Fetching and splitting data with test_size={test_size}")
 
-        features = [
-            "temperature_2m", "relative_humidity_2m", "dew_point_2m",
-            "wind_speed_10m", "wind_direction_10m", "wind_gusts_10m",
-            "surface_pressure", "precipitation", "rain", "cloud_cover",
-            "shortwave_radiation", "pm10", "pm2_5", "carbon_monoxide",
-            "nitrogen_dioxide", "sulphur_dioxide", "ozone",
-            "hour", "day_of_week", "month", "day_of_year", "is_weekend", "is_rush_hour",
-            "season", "wind_u", "wind_v", "is_stagnant", "temp_humidity_product", "us_aqi"
-        ]
-        query = fg.select(features)
+        try:
+            fs = self._project.get_feature_store()
+            logger.debug("Retrieved feature store")
 
-        feature_view = fs.get_or_create_feature_view(
-            name="aqi_feature_view",
-            version=1,
-            query=query,
-            labels=["us_aqi"],
-        )
+            fg = fs.get_or_create_feature_group(
+                name="aqi_hourly_features",
+                version=1,
+                description="Hourly AQI features (weather + pollutants + temporal)",
+                primary_key=["datetime"],
+                event_time="datetime",
+                online_enabled=False,
+            )
+            logger.info("Retrieved feature group: aqi_hourly_features v1")
 
-        X_train, _, y_train, _ = feature_view.train_test_split(
-            description="aqi training dataset",
-            test_size=test_size,
-        )
+            features = [
+                "temperature_2m", "relative_humidity_2m", "dew_point_2m",
+                "wind_speed_10m", "wind_direction_10m", "wind_gusts_10m",
+                "surface_pressure", "precipitation", "rain", "cloud_cover",
+                "shortwave_radiation", "pm10", "pm2_5", "carbon_monoxide",
+                "nitrogen_dioxide", "sulphur_dioxide", "ozone",
+                "hour", "day_of_week", "month", "day_of_year", "is_weekend", "is_rush_hour",
+                "season", "wind_u", "wind_v", "is_stagnant", "temp_humidity_product", "us_aqi"
+            ]
+            query = fg.select(features)
+            logger.debug(f"Selected {len(features)} features")
 
-        X_train = X_train.fillna(X_train.mean())
-        y_train = y_train.values.ravel()
+            feature_view = fs.get_or_create_feature_view(
+                name="aqi_feature_view",
+                version=1,
+                query=query,
+                labels=["us_aqi"],
+            )
+            logger.info("Retrieved feature view: aqi_feature_view v1")
 
-        return X_train, y_train
+            X_train, _, y_train, _ = feature_view.train_test_split(
+                description="aqi training dataset",
+                test_size=test_size,
+            )
+            logger.info(f"Split data: X_train shape={X_train.shape}, y_train shape={y_train.shape}")
+
+            X_train = X_train.fillna(X_train.mean())
+            y_train = y_train.values.ravel()
+            logger.debug("Filled missing values with mean")
+
+            return X_train, y_train
+
+        except Exception as e:
+            logger.error(f"Failed to fetch and split data: {e}", exc_info=True)
+            raise
 
     def _save_model_to_registry(self, model, model_name: str) -> None:
-        mr = self._project.get_model_registry()
+        logger.info(f"Saving model '{model_name}' to registry")
 
-        model_dir = f"/tmp/{model_name}"
-        makedirs(model_dir, exist_ok=True)
-        model_path = f"{model_dir}/{model_name}.pkl"
-        dump(model, model_path)
+        try:
+            mr = self._project.get_model_registry()
 
-        set_key(".env", "MODEL_VERSION", str(int(getenv("MODEL_VERSION")) + 1))
+            model_dir = f"/tmp/{model_name}"
+            makedirs(model_dir, exist_ok=True)
+            model_path = f"{model_dir}/{model_name}.pkl"
+            dump(model, model_path)
+            logger.debug(f"Serialized model to {model_path}")
 
-        aqi_model = mr.sklearn.create_model(
-            name=model_name,
-            version=int(getenv("MODEL_VERSION")),
-            description=f"AQI prediction model using {model_name}",
-        )
-        aqi_model.save(model_dir)
-        rmtree(model_dir)
+            set_key(".env", "MODEL_VERSION", str(int(getenv("MODEL_VERSION")) + 1))
+            current_version = int(getenv("MODEL_VERSION"))
+            logger.info(f"Updated MODEL_VERSION to {current_version}")
+
+            aqi_model = mr.sklearn.create_model(
+                name=model_name,
+                version=current_version,
+                description=f"AQI prediction model using {model_name}",
+            )
+            aqi_model.save(model_dir)
+            logger.info(f"Successfully saved model '{model_name}' v{current_version} to registry")
+
+            rmtree(model_dir)
+            logger.debug(f"Cleaned up temporary directory {model_dir}")
+
+        except Exception as e:
+            logger.error(f"Failed to save model '{model_name}' to registry: {e}", exc_info=True)
+            raise
 
     def _fit_random_forest(
             self,
             X_train: TrainingDatasetDataFrameTypes,
             y_train: TrainingDatasetDataFrameTypes
     ) -> RandomForestRegressor:
-
-        random_forest_model = RandomForestRegressor(n_estimators=100, random_state=42, n_jobs=-1)
-        random_forest_model.fit(X_train, y_train)
-        return random_forest_model
+        logger.info("Training Random Forest model")
+        try:
+            random_forest_model = RandomForestRegressor(n_estimators=100, random_state=42, n_jobs=-1)
+            random_forest_model.fit(X_train, y_train)
+            logger.info("Random Forest training completed")
+            return random_forest_model
+        except Exception as e:
+            logger.error(f"Failed to train Random Forest: {e}", exc_info=True)
+            raise
 
     def _fit_gradient_boosting(
             self,
             X_train: TrainingDatasetDataFrameTypes,
             y_train: TrainingDatasetDataFrameTypes
     ) -> GradientBoostingRegressor:
-
-        gradient_boosting_model = GradientBoostingRegressor(n_estimators=100, random_state=42)
-        gradient_boosting_model.fit(X_train, y_train)
-        return gradient_boosting_model
+        logger.info("Training Gradient Boosting model")
+        try:
+            gradient_boosting_model = GradientBoostingRegressor(n_estimators=100, random_state=42)
+            gradient_boosting_model.fit(X_train, y_train)
+            logger.info("Gradient Boosting training completed")
+            return gradient_boosting_model
+        except Exception as e:
+            logger.error(f"Failed to train Gradient Boosting: {e}", exc_info=True)
+            raise
 
     def _fit_svr(
             self,
             X_train: TrainingDatasetDataFrameTypes,
             y_train: TrainingDatasetDataFrameTypes
     ) -> SVR:
-
-        svr_model = SVR(kernel="linear")
-        svr_model.fit(X_train, y_train)
-        return svr_model
+        logger.info("Training SVR model")
+        try:
+            svr_model = SVR(kernel="linear")
+            svr_model.fit(X_train, y_train)
+            logger.info("SVR training completed")
+            return svr_model
+        except Exception as e:
+            logger.error(f"Failed to train SVR: {e}", exc_info=True)
+            raise
 
     def _fit_knn(
             self,
             X_train: TrainingDatasetDataFrameTypes,
             y_train: TrainingDatasetDataFrameTypes
     ) -> KNeighborsRegressor:
-
-        knn_model = KNeighborsRegressor(n_neighbors=40, n_jobs=-1)
-        knn_model.fit(X_train, y_train)
-        return knn_model
+        logger.info("Training KNN model")
+        try:
+            knn_model = KNeighborsRegressor(n_neighbors=40, n_jobs=-1)
+            knn_model.fit(X_train, y_train)
+            logger.info("KNN training completed")
+            return knn_model
+        except Exception as e:
+            logger.error(f"Failed to train KNN: {e}", exc_info=True)
+            raise
 
     def _fit_xgboost(
             self,
             X_train: TrainingDatasetDataFrameTypes,
             y_train: TrainingDatasetDataFrameTypes
     ) -> XGBRegressor:
-
-        xgb_model = XGBRegressor(n_estimators=100, random_state=42, n_jobs=-1)
-        xgb_model.fit(X_train, y_train)
-        return xgb_model
+        logger.info("Training XGBoost model")
+        try:
+            xgb_model = XGBRegressor(n_estimators=100, random_state=42, n_jobs=-1)
+            xgb_model.fit(X_train, y_train)
+            logger.info("XGBoost training completed")
+            return xgb_model
+        except Exception as e:
+            logger.error(f"Failed to train XGBoost: {e}", exc_info=True)
+            raise
 
     def train(self) -> None:
-        X_train, y_train =  self._fetch_and_split_data()
+        logger.info("=" * 60)
+        logger.info("Starting training pipeline")
+        logger.info("=" * 60)
 
-        random_forest_model = self._fit_random_forest(X_train, y_train)
-        self._save_model_to_registry(random_forest_model, "random_forest")
+        try:
+            X_train, y_train = self._fetch_and_split_data()
 
-        gradient_boosting_model = self._fit_gradient_boosting(X_train, y_train)
-        self._save_model_to_registry(gradient_boosting_model, "gradient_boosting")
+            random_forest_model = self._fit_random_forest(X_train, y_train)
+            self._save_model_to_registry(random_forest_model, "random_forest")
 
-        svr_model = self._fit_svr(X_train, y_train)
-        self._save_model_to_registry(svr_model, "svr")
+            gradient_boosting_model = self._fit_gradient_boosting(X_train, y_train)
+            self._save_model_to_registry(gradient_boosting_model, "gradient_boosting")
 
-        knn_model = self._fit_knn(X_train, y_train)
-        self._save_model_to_registry(knn_model, "knn")
+            svr_model = self._fit_svr(X_train, y_train)
+            self._save_model_to_registry(svr_model, "svr")
 
-        xgb_model = self._fit_xgboost(X_train, y_train)
-        self._save_model_to_registry(xgb_model, "xgboost")
-        
+            knn_model = self._fit_knn(X_train, y_train)
+            self._save_model_to_registry(knn_model, "knn")
 
-if name == "__main__":
-    TrainingPipeline().train()
+            xgb_model = self._fit_xgboost(X_train, y_train)
+            self._save_model_to_registry(xgb_model, "xgboost")
+
+            logger.info("=" * 60)
+            logger.info("Training pipeline completed successfully")
+            logger.info("=" * 60)
+
+        except Exception as e:
+            logger.error("=" * 60)
+            logger.error(f"Training pipeline failed: {e}")
+            logger.error("=" * 60)
+            raise
+
+
+TrainingPipeline().train()
