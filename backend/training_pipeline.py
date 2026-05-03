@@ -106,10 +106,10 @@ class TrainingPipeline:
                 for deployment in deployments:
                     if deployment.model_name == model_name:
                         logger.info(f"Stopping deployment for {model_name}")
-                        deployment.stop()
+                        deployment.delete(force=True)
             except Exception as e:
-                logger.warning(f"Could not stop deployment (might not exist): {e}")
-
+                logger.warning(f"Could not delete deployment: {e}")
+            
             existing_model.delete()
             logger.info(f"Successfully deleted existing model: {model_name}")
             return True
@@ -125,7 +125,10 @@ class TrainingPipeline:
             logger.info(f"Retrieved model {model_name} for deployment")
 
             logger.info(f"Creating deployment for {model_name}")
-            deployment = model.deploy(environment="minimal-inference-pipeline-numls231-v1")
+            if model_name == "xgboost":
+                deployment = model.deploy(serving_tool="KSERVE", environment="pandas-inference-pipeline")
+            else:
+                deployment = model.deploy(environment="pandas-inference-pipeline")
             deployment.start()
             logger.info(f"Successfully deployed model {model_name}")
             return True
