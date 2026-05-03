@@ -109,7 +109,7 @@ class TrainingPipeline:
                         deployment.delete(force=True)
             except Exception as e:
                 logger.warning(f"Could not delete deployment: {e}")
-            
+
             existing_model.delete()
             logger.info(f"Successfully deleted existing model: {model_name}")
             return True
@@ -126,7 +126,11 @@ class TrainingPipeline:
 
             logger.info(f"Creating deployment for {model_name}")
             if model_name == "xgboost":
-                deployment = model.deploy(serving_tool="KSERVE", environment="pandas-inference-pipeline")
+                deployment = model.deploy(
+                    serving_tool="KSERVE",
+                    script_file="/Projects/haroons_aqi_predictor/Resources/xgboost_predictor.py",
+                    environment="pandas-inference-pipeline"
+                )
             else:
                 deployment = model.deploy(environment="pandas-inference-pipeline")
             deployment.start()
@@ -277,5 +281,4 @@ class TrainingPipeline:
             raise
 
 
-if __name__ == "__main__":
-    TrainingPipeline().train()
+TrainingPipeline().train()
