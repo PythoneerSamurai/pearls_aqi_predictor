@@ -1,12 +1,10 @@
 from datetime import datetime, timedelta
-from os import getenv, remove
-from typing import Any
+from os import getenv
 import logging
 
 from dotenv import load_dotenv
 from hopsworks import login
-from joblib import load
-from numpy import cos, sin, radians, mean
+from numpy import array, mean, cos, sin, radians
 from openmeteo_requests import Client
 from pandas import DataFrame, date_range, to_datetime, Timedelta
 from requests_cache import CachedSession
@@ -37,7 +35,7 @@ class InferencePipeline:
             logger.info("Successfully connected to Hopsworks project")
 
             self._fs = self._project.get_feature_store()
-            self._mr = self._project.get_model_registry()
+            self._ms = self._project.get_model_serving()
             logger.debug("Retrieved feature store and model registry")
 
             self._latitude = 33.5973
@@ -46,6 +44,9 @@ class InferencePipeline:
 
             self._weather_features_url = "https://api.open-meteo.com/v1/forecast"
             self._aqi_features_url = "https://air-quality-api.open-meteo.com/v1/air-quality"
+            
+            self._model_names = ["random_forest", "gradient_boosting", "svr", "knn", "xgboost"]
+
 
         except Exception as e:
             logger.error(f"Failed to initialize InferencePipeline: {e}", exc_info=True)
@@ -160,30 +161,6 @@ class InferencePipeline:
             logger.error(f"Failed to engineer features: {e}", exc_info=True)
             raise
 
-    def _load_models(self) -> dict[str, Any]:
-        logger.info("Loading models from registry")
-        model_names = ["random_forest", "gradient_boosting", "svr", "knn", "xgboost"]
-        models = {}
-        logger.info(f"Loading model version: {1}")
-
-        try:
-            for model_name in model_names:
-                logger.debug(f"Loading {model_name} model")
-                model = self._mr.get_models(model_name, version=1)
-                models.update({model_name: model})
-                model_dir = model.download(local_path="temp")
-                loaded_model = load(f"{model_dir}/{model_name}.pkl")
-                models[model_name] = loaded_model
-                remove(f"{model_dir}/{model_name}.pkl")
-                logger.info(f"Successfully loaded {model_name} model v{model_version}")
-
-            logger.info(f"All {len(models)} models loaded successfully")
-            return models
-
-        except Exception as e:
-            logger.error(f"Failed to load models: {e}", exc_info=True)
-            raise
-
     def predict(self, days_ahead: int = 3) -> DataFrame:
         logger.info("=" * 60)
         logger.info(f"Starting AQI prediction for {days_ahead} days ahead")
@@ -192,8 +169,6 @@ class InferencePipeline:
         try:
             forecast_df = self._fetch_forecast_data(days_ahead)
             forecast_df = self._engineer_features(forecast_df)
-
-            models = self._load_models()
 
             feature_cols = [
                 "temperature_2m", "relative_humidity_2m", "dew_point_2m",
@@ -212,13 +187,58 @@ class InferencePipeline:
                 "datetime": forecast_df["datetime"]
             }
 
-            for model_name, model in models.items():
-                logger.debug(f"Generating predictions with {model_name}")
-                predictions[f"{model_name}_prediction"] = model.predict(X)
+            deployments = self._ms.get_deployments()
+            input_data = X.values.tolist()
 
-            model_preds = [predictions[f"{name}_prediction"] for name in models.keys()]
-            predictions["ensemble_prediction"] = mean(model_preds, axis=0)
-            logger.info("Generated ensemble predictions")
+            for model_name in self._model_names:
+                for deployment in deployments:
+                    if deployment.model_name == model_name and deployment.is_running():
+                        try:
+                            result = deployment.predict(inputs=input_data)
+                            if isinstance(result, dict) and 'predictions' in result:
+                                preds = result['predictions']
+                                if preds and isinstance(preds[0], list):
+                                    predictions[f"{model_name}_prediction"] = [p[0] if isinstance(p, list) else p for p
+                                                                               in preds]
+                                else:
+                                    predictions[f"{model_name}_prediction"] = preds
+                            elif isinstance(result, list):
+                                if result and isinstance(result[0], list):
+                                    predictions[f"{model_name}_prediction"] = [p[0] if isinstance(p, list) else p for p
+                                                                               in result]
+                                else:
+                                    predictions[f"{model_name}_prediction"] = result
+                            else:
+                                predictions[f"{model_name}_prediction"] = result
+
+                            logger.info(f"Inference received from {model_name}")
+                        except Exception as e:
+                            logger.error(f"Failed to get predictions from {model_name}: {e}")
+                            predictions[f"{model_name}_prediction"] = None
+                        break
+                else:
+                    logger.warning(f"No running deployment found for {model_name}")
+                    predictions[f"{model_name}_prediction"] = None
+
+            model_preds = []
+            for name in self._model_names:
+                pred_key = f"{name}_prediction"
+                if pred_key in predictions and predictions[pred_key] is not None:
+                    preds = predictions[pred_key]
+                    if isinstance(preds, list) and preds and isinstance(preds[0], list):
+                        preds = [p[0] if isinstance(p, list) else p for p in preds]
+                    model_preds.append(preds)
+
+            if model_preds:
+                pred_array = array(model_preds)
+                ensemble_mean = mean(pred_array, axis=0).tolist()
+                if isinstance(ensemble_mean, list) and ensemble_mean and isinstance(ensemble_mean[0], list):
+                    ensemble_mean = [e[0] if isinstance(e, list) else e for e in ensemble_mean]
+                predictions["ensemble_prediction"] = ensemble_mean
+                logger.info(f"Generated ensemble predictions from {len(model_preds)} models")
+            else:
+                predictions["ensemble_prediction"] = None
+                logger.warning("No model predictions available for ensemble")
 
             predictions_df = DataFrame(predictions)
             logger.info(f"Created predictions DataFrame with {len(predictions_df)} rows")
@@ -256,3 +276,4 @@ class InferencePipeline:
         except Exception as e:
             logger.error(f"Failed to generate daily summary: {e}", exc_info=True)
             raise
+        
