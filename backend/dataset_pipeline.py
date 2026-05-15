@@ -168,15 +168,14 @@ class DatasetPipeline:
 
     def _store_in_feature_store(self, df: DataFrame) -> None:
         aqi_fg = self._fs.get_or_create_feature_group(
-                name="aqi_hourly_features",
-                version=1,
-                description="Hourly AQI features (weather + pollutants + temporal)",
-                primary_key=["datetime"],
-                online_enabled=False,
-                event_time="datetime",
-            )
-        
-        aqi_fg.insert(df, write_options={"wait_for_job": True})
+            name="aqi_hourly_features",
+            version=1,
+            description="Hourly AQI features (weather + pollutants + temporal)",
+            primary_key=["datetime"],
+            event_time="datetime",
+            online_enabled=False,
+        )
+        aqi_fg.insert(df, write_options={"wait_for_job": False})
 
     def run_hourly_update(self) -> None:
         end_date = datetime.now().strftime("%Y-%m-%d")
@@ -201,4 +200,4 @@ class DatasetPipeline:
         self._store_in_feature_store(engineered_df)
 
 
-DatasetPipeline().run_hourly_update()
+DatasetPipeline().run_historical_backfill()
