@@ -175,7 +175,7 @@ class DatasetPipeline:
             event_time="datetime",
             online_enabled=False,
         )
-        aqi_fg.insert(df, write_options={"wait_for_job": False})
+        aqi_fg.insert(df, write_options={"wait_for_job": True})
 
     def run_hourly_update(self) -> None:
         end_date = datetime.now().strftime("%Y-%m-%d")
