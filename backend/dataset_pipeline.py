@@ -167,25 +167,18 @@ class DatasetPipeline:
             raise
 
     def _store_in_feature_store(self, df: DataFrame) -> None:
-        logger.info("Getting or creating feature group")
         aqi_fg = self._fs.get_or_create_feature_group(
-            name="aqi_hourly_features",
-            version=1,
-            description="Hourly AQI features (weather + pollutants + temporal)",
-            primary_key=["datetime"],
-            event_time="datetime",
-            online_enabled=False,
-        )
-        logger.info("Inserting data into feature group")
-        aqi_fg.insert(
-            df,
-            write_options={
-                "wait_for_job": False,
-                "ingestion_job_args": {"spark": False},
-            }
-        )
-        logger.info("Insert called successfully")
-    
+                name="aqi_hourly_features",
+                version=1,
+                description="Hourly AQI features (weather + pollutants + temporal)",
+                primary_key=["datetime"],
+                online_enabled=True,
+                event_time="datetime",
+                online_disk=True,
+            )
+        
+        aqi_fg.insert(df)
+
     def run_hourly_update(self) -> None:
         end_date = datetime.now().strftime("%Y-%m-%d")
         start_date = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
