@@ -2,10 +2,8 @@ name: Data Pipeline - Fetch & Store Features
 
 on:
   schedule:
-    # Runs every hour at minute 5
-    - cron: '5 * * * *'
-  workflow_dispatch:  # Manual trigger for testing
-
+    - cron: '0 * * * *'
+  workflow_dispatch:
 jobs:
   fetch-features:
     runs-on: ubuntu-latest
@@ -33,6 +31,6 @@ jobs:
     
     - name: Run data pipeline
       env:
-        HOPSWORKS_API_KEY: ${{ secrets.HOPSWORKS_API_KEY }}
+        API_KEY: ${{ secrets.HOPSWORKS_API_KEY }}
       run: |
         python dataset_pipeline.py --mode hourly
