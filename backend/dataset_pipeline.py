@@ -172,12 +172,11 @@ class DatasetPipeline:
                 version=1,
                 description="Hourly AQI features (weather + pollutants + temporal)",
                 primary_key=["datetime"],
-                online_enabled=True,
+                online_enabled=False,
                 event_time="datetime",
-                online_disk=True,
             )
         
-        aqi_fg.insert(df)
+        aqi_fg.insert(df, write_options={"wait_for_job": True})
 
     def run_hourly_update(self) -> None:
         end_date = datetime.now().strftime("%Y-%m-%d")
