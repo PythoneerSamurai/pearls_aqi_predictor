@@ -255,7 +255,7 @@ class TrainingPipeline:
         try:
             X_train, y_train = self._fetch_and_split_data()
 
-            '''random_forest_model = self._fit_random_forest(X_train, y_train)
+            random_forest_model = self._fit_random_forest(X_train, y_train)
             self._save_model_to_registry(random_forest_model, "random_forest")
 
             gradient_boosting_model = self._fit_gradient_boosting(X_train, y_train)
@@ -265,7 +265,7 @@ class TrainingPipeline:
             self._save_model_to_registry(svr_model, "svr")
 
             knn_model = self._fit_knn(X_train, y_train)
-            self._save_model_to_registry(knn_model, "knn")'''
+            self._save_model_to_registry(knn_model, "knn")
 
             xgb_model = self._fit_xgboost(X_train, y_train)
             self._save_model_to_registry(xgb_model, "xgboost")
