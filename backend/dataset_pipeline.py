@@ -33,7 +33,7 @@ class DatasetPipeline:
                 api_key_value=getenv("API_KEY"),
             )
             logger.info("Successfully connected to Hopsworks project")
-
+            
             self._fs = self._project.get_feature_store()
             logger.debug("Retrieved feature store")
 
@@ -43,14 +43,14 @@ class DatasetPipeline:
             self._latitude = 33.5973
             self._longitude = 73.0479
             logger.info(f"Location set to: ({self._latitude}, {self._longitude})")
-
+            
         except Exception as e:
             logger.error(f"Failed to initialize DatasetPipeline: {e}", exc_info=True)
             raise
 
     def _fetch_data(self, start_date: str, end_date: str) -> tuple[DataFrame, DataFrame]:
         logger.info(f"Fetching data from {start_date} to {end_date}")
-
+        
         try:
             feature_params = {
                 "latitude": self._latitude,
@@ -82,7 +82,7 @@ class DatasetPipeline:
             retry_session = retry(cache_session, retries=5, backoff_factor=0.2)
             openmeteo = Client(session=retry_session)
             logger.debug("OpenMeteo client initialized with caching and retry")
-
+            
             raw_features = openmeteo.weather_api(url=self._features_url, params=feature_params)[0]
             raw_targets = openmeteo.weather_api(url=self._targets_url, params=target_params)[0]
             logger.info("Successfully fetched weather and AQI data from OpenMeteo")
@@ -119,16 +119,16 @@ class DatasetPipeline:
             features_df = DataFrame(features_data)
             targets_df = DataFrame(targets_data)
             logger.info(f"Created DataFrames: features={features_df.shape}, targets={targets_df.shape}")
-
+            
             return features_df, targets_df
-
+            
         except Exception as e:
             logger.error(f"Failed to fetch data: {e}", exc_info=True)
             raise
 
     def _engineer_features(self, df: DataFrame) -> DataFrame:
         logger.info("Engineering features")
-
+        
         try:
             df["datetime"] = df["datetime"].dt.tz_convert("Asia/Karachi")
             df = df.sort_values("datetime").reset_index(drop=True)
@@ -161,7 +161,7 @@ class DatasetPipeline:
 
             logger.info(f"Feature engineering completed: {df.shape[1]} features")
             return df
-
+            
         except Exception as e:
             logger.error(f"Failed to engineer features: {e}", exc_info=True)
             raise
@@ -175,7 +175,7 @@ class DatasetPipeline:
             event_time="datetime",
             online_enabled=False,
         )
-        aqi_fg.insert(df, storage="offline")
+        aqi_fg.insert(df, write_options={"wait_for_job": False})
 
     def run_hourly_update(self) -> None:
         end_date = datetime.now().strftime("%Y-%m-%d")
@@ -201,4 +201,3 @@ class DatasetPipeline:
 
 
 DatasetPipeline().run_hourly_update()
-
