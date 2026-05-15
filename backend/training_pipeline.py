@@ -128,7 +128,7 @@ class TrainingPipeline:
             if model_name == "xgboost":
                 deployment = model.deploy(
                     serving_tool="KSERVE",
-                    script_file="/Projects/haroons_aqi_predictor/Resources/xgboost_predictor.py",
+                    script_file="xgboost_predictor.py",
                     environment="pandas-inference-pipeline"
                 )
             else:
@@ -143,18 +143,24 @@ class TrainingPipeline:
 
     def _save_model_to_registry(self, model, model_name: str) -> None:
         logger.info(f"Saving model '{model_name}' to registry")
-
+    
         try:
             mr = self._project.get_model_registry()
-
             self._delete_existing_model(model_name)
-
+    
             model_dir = f"/tmp/{model_name}"
             makedirs(model_dir, exist_ok=True)
-            model_path = f"{model_dir}/{model_name}.pkl"
-            dump(model, model_path)
-            logger.debug(f"Serialized model to {model_path}")
-
+            dump(model, f"{model_dir}/{model_name}.pkl")
+    
+            if model_name == "xgboost":
+                dataset_api = self._project.get_dataset_api()
+                dataset_api.download(
+                    "Resources/xgboost_predictor.py",
+                    local_path=f"{model_dir}/xgboost_predictor.py",
+                    overwrite=True
+                )
+                logger.info("Bundled xgboost_predictor.py into model artifacts")
+    
             aqi_model = mr.sklearn.create_model(
                 name=model_name,
                 version=1,
@@ -162,16 +168,14 @@ class TrainingPipeline:
             )
             aqi_model.save(model_dir)
             logger.info(f"Successfully saved model '{model_name}' to registry")
-
+    
             self._deploy_model(model_name)
-
             rmtree(model_dir)
-            logger.debug(f"Cleaned up temporary directory {model_dir}")
-
+    
         except Exception as e:
             logger.error(f"Failed to save model '{model_name}' to registry: {e}", exc_info=True)
             raise
-
+    
     def _fit_random_forest(
             self,
             X_train: TrainingDatasetDataFrameTypes,
@@ -255,7 +259,7 @@ class TrainingPipeline:
         try:
             X_train, y_train = self._fetch_and_split_data()
 
-            random_forest_model = self._fit_random_forest(X_train, y_train)
+            '''random_forest_model = self._fit_random_forest(X_train, y_train)
             self._save_model_to_registry(random_forest_model, "random_forest")
 
             gradient_boosting_model = self._fit_gradient_boosting(X_train, y_train)
@@ -265,7 +269,7 @@ class TrainingPipeline:
             self._save_model_to_registry(svr_model, "svr")
 
             knn_model = self._fit_knn(X_train, y_train)
-            self._save_model_to_registry(knn_model, "knn")
+            self._save_model_to_registry(knn_model, "knn")'''
 
             xgb_model = self._fit_xgboost(X_train, y_train)
             self._save_model_to_registry(xgb_model, "xgboost")
