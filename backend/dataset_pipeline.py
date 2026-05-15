@@ -167,6 +167,8 @@ class DatasetPipeline:
             raise
 
     def _store_in_feature_store(self, df: DataFrame) -> None:
+        df["datetime"] = df["datetime"].dt.as_unit("us")
+        
         aqi_fg = self._fs.get_or_create_feature_group(
             name="aqi_hourly_features",
             version=1,
@@ -196,6 +198,8 @@ class DatasetPipeline:
 
         merged_df = merge(features_df, targets_df, on="datetime", how="inner")
         engineered_df = self._engineer_features(merged_df)
+
+        engineered_df["datetime"] = engineered_df["datetime"].dt.as_unit("us")
 
         self._store_in_feature_store(engineered_df)
 
