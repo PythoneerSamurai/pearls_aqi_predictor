@@ -7,7 +7,7 @@ on:
 jobs:
   fetch-and-store:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
 
     steps:
       - uses: actions/checkout@v4
@@ -22,7 +22,7 @@ jobs:
         run: pip install -r backend/requirements.txt
 
       - name: Run hourly data pipeline
-        timeout-minutes: 5
+        timeout-minutes: 10
         env:
           API_KEY: ${{ secrets.API_KEY }}
         run: python backend/dataset_pipeline.py
