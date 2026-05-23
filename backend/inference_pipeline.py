@@ -1,32 +1,32 @@
+# Imports.
 from datetime import datetime, timedelta
 from os import getenv
-import logging
+import logging  # For generating logs. Useful for debugging.
 
 from dotenv import load_dotenv
 from hopsworks import login
-from numpy import array, mean, cos, sin, radians
+from numpy import array, mean, cos, sin, radians  # For feature engineering and handling missing values.
 from openmeteo_requests import Client
 from pandas import DataFrame, date_range, to_datetime, Timedelta
 from requests_cache import CachedSession
 from retry_requests import retry
 
+# Setting up logger to save logs to stdout.
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler('inference_pipeline.log'),
-        logging.StreamHandler()
-    ]
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
 
 
+# Main pipeline class.
 class InferencePipeline:
     def __init__(self):
         logger.info("Initializing InferencePipeline")
         load_dotenv()
 
         try:
+            # Logging into the project.
             self._project = login(
                 host="eu-west.cloud.hopsworks.ai",
                 project="haroons_aqi_predictor",
@@ -34,25 +34,34 @@ class InferencePipeline:
             )
             logger.info("Successfully connected to Hopsworks project")
 
-            self._fs = self._project.get_feature_store()
-            self._ms = self._project.get_model_serving()
+            self._ms = self._project.get_model_serving()  # For getting predictions from models.
             logger.debug("Retrieved feature store and model registry")
 
+            # Rawalpindi coordinates.
             self._latitude = 33.5973
             self._longitude = 73.0479
             logger.info(f"Location set to: ({self._latitude}, {self._longitude})")
 
+            # Same thing as the dataset pipeline. Two APIs, one for weather data, the other for pollutant data.
             self._weather_features_url = "https://api.open-meteo.com/v1/forecast"
             self._aqi_features_url = "https://air-quality-api.open-meteo.com/v1/air-quality"
-            
-            self._model_names = ["random_forest", "gradient_boosting", "svr", "knn", "xgboost"]
 
+            # Names of the trained and deployed models.
+            self._model_names = ["random_forest", "gradient_boosting", "svr", "knn", "xgboost"]
 
         except Exception as e:
             logger.error(f"Failed to initialize InferencePipeline: {e}", exc_info=True)
             raise
 
     def _fetch_forecast_data(self, days_ahead: int = 3) -> DataFrame:
+        '''
+        Function for fetching forecast data for the next 3 days. The features are fetched, the target is not.
+        The models have been trained on hourly data. My research shows that this is the approach being used
+        in the AQI-prediction industry. Later, the daily AQI is extracted from the hourly predictions.
+        This actually allows the model to predict the AQI for 'n' number of days, making it far more
+        efficient than models hard-trained to predict AQI for a set number of days.
+        '''
+        
         logger.info(f"Fetching forecast data for {days_ahead} days ahead")
 
         try:
@@ -122,6 +131,10 @@ class InferencePipeline:
             raise
 
     def _engineer_features(self, df: DataFrame) -> DataFrame:
+        '''
+        Function for engineering the same features as were in the dataset pipeline.
+        '''
+        
         logger.info("Engineering features for forecast data")
 
         try:
@@ -162,6 +175,10 @@ class InferencePipeline:
             raise
 
     def predict(self, days_ahead: int = 3) -> DataFrame:
+        '''
+        Function for fetching predictions from the deployed models.
+        '''
+        
         logger.info("=" * 60)
         logger.info(f"Starting AQI prediction for {days_ahead} days ahead")
         logger.info("=" * 60)
@@ -183,26 +200,32 @@ class InferencePipeline:
             X = forecast_df[feature_cols].fillna(forecast_df[feature_cols].mean())
             logger.debug(f"Prepared feature matrix: {X.shape}")
 
+            # Predictions are also stored with respect to datetime.
             predictions = {
                 "datetime": forecast_df["datetime"]
             }
 
-            deployments = self._ms.get_deployments()
-            input_data = X.values.tolist()
+            deployments = self._ms.get_deployments()  # Getting deployments.
+            input_data = X.values.tolist()  # Hopsworks indicates that the input data should be in list form.
 
+            # Iterate for all models.
             for model_name in self._model_names:
                 for deployment in deployments:
                     if deployment.model_name == model_name and deployment.is_running():
                         try:
                             result = deployment.predict(inputs=input_data)
+                            # "isinstance" check is used to ensure that what's received is not None.
                             if isinstance(result, dict) and 'predictions' in result:
                                 preds = result['predictions']
                                 if preds and isinstance(preds[0], list):
+                                    # List comprehension is used because we have hourly predictions for three days. p[0], because
+                                    # p can be a list of lists [[predictions], [predictions], [predictions], ...].
                                     predictions[f"{model_name}_prediction"] = [p[0] if isinstance(p, list) else p for p
                                                                                in preds]
                                 else:
+                                    # Else store whatever is received (None) as predictions.
                                     predictions[f"{model_name}_prediction"] = preds
-                            elif isinstance(result, list):
+                            elif isinstance(result, list):  # Fetching prediction for a single day.
                                 if result and isinstance(result[0], list):
                                     predictions[f"{model_name}_prediction"] = [p[0] if isinstance(p, list) else p for p
                                                                                in result]
@@ -220,6 +243,7 @@ class InferencePipeline:
                     logger.warning(f"No running deployment found for {model_name}")
                     predictions[f"{model_name}_prediction"] = None
 
+            # Extract model's predictions from the dictionary.
             model_preds = []
             for name in self._model_names:
                 pred_key = f"{name}_prediction"
@@ -229,6 +253,7 @@ class InferencePipeline:
                         preds = [p[0] if isinstance(p, list) else p for p in preds]
                     model_preds.append(preds)
 
+            # Use the extracted model predictions for calculating the ensemble hourly means.
             if model_preds:
                 pred_array = array(model_preds)
                 ensemble_mean = mean(pred_array, axis=0).tolist()
@@ -256,18 +281,23 @@ class InferencePipeline:
             raise
 
     def get_daily_summary(self, predictions_df) -> DataFrame:
+        '''
+        Function for getting the daily summary. This function and that above are called in the frontend.
+        '''
+        
         logger.info("Generating daily summary from predictions")
 
         try:
             predictions_df["date"] = predictions_df["datetime"].dt.date
 
+            # us_aqi is the maximum hourly AQI in a day.
             daily_summary = predictions_df.groupby("date").agg({
-                "random_forest_prediction": "mean",
-                "gradient_boosting_prediction": "mean",
-                "svr_prediction": "mean",
-                "knn_prediction": "mean",
-                "xgboost_prediction": "mean",
-                "ensemble_prediction": "mean"
+                "random_forest_prediction": "max",
+                "gradient_boosting_prediction": "max",
+                "svr_prediction": "max",
+                "knn_prediction": "max",
+                "xgboost_prediction": "max",
+                "ensemble_prediction": "max"
             }).round(2)
 
             logger.info(f"Created daily summary with {len(daily_summary)} days")
