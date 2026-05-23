@@ -292,12 +292,12 @@ class InferencePipeline:
 
             # us_aqi is the maximum hourly AQI in a day.
             daily_summary = predictions_df.groupby("date").agg({
-                "random_forest_prediction": "max",
-                "gradient_boosting_prediction": "max",
-                "svr_prediction": "max",
-                "knn_prediction": "max",
-                "xgboost_prediction": "max",
-                "ensemble_prediction": "max"
+                "random_forest_prediction": "mean",
+                "gradient_boosting_prediction": "mean",
+                "svr_prediction": "mean",
+                "knn_prediction": "mean",
+                "xgboost_prediction": "mean",
+                "ensemble_prediction": "mean"
             }).round(2)
 
             logger.info(f"Created daily summary with {len(daily_summary)} days")
