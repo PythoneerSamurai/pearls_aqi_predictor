@@ -75,35 +75,35 @@ The **AQI Prediction System** is a fully automated, serverless machine learning 
 ## 🏗️ System Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
+┌──────────────────────────────────────────────────────────────────┐
 │ Hourly Data Backfill (One-time) + Data Ingestion (Hourly)        │
-│         GitHub Actions → Open-Meteo API → Weather & Pollutants │
+│         GitHub Actions → Open-Meteo API → Weather & Pollutants   │
 └─────────────────────┬────────────────────────────────────────────┘
                      ↓
-┌─────────────────────────────────────────────────────────────────┐
+┌──────────────────────────────────────────────────────────────────┐
 │              Feature Engineering & Storage                       │
-│      Temporal, Seasonal, Wind Decomposition → Hopsworks         │
-└────────────────────┬────────────────────────────────────────────┘
+│      Temporal, Seasonal, Wind Decomposition → Hopsworks          │
+└────────────────────┬─────────────────────────────────────────────┘
                      ↓
-┌─────────────────────────────────────────────────────────────────┐
+┌──────────────────────────────────────────────────────────────────┐
 │             Model Training Pipeline (Daily)                      │
-│    Feature Retrieval → Model Training → Hyperparameter Tuning   │
-└────────────────────┬────────────────────────────────────────────┘
+│    Feature Retrieval → Model Training → Hyperparameter Tuning    │
+└────────────────────┬─────────────────────────────────────────────┘
                      ↓
-┌─────────────────────────────────────────────────────────────────┐
-│           Model Registry & Deployment (Hopsworks)               │
-│     Version Management → KSERVE Deployment → Active Models      │
-└────────────────────┬────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────┐
+│           Model Registry & Deployment (Hopsworks)                │
+│     Version Management → KSERVE Deployment → Active Models       │
+└────────────────────┬─────────────────────────────────────────────┘
                      ↓
-┌─────────────────────────────────────────────────────────────────┐
+┌──────────────────────────────────────────────────────────────────┐
 │              Inference Pipeline (On-Demand)                      │
-│    Fetch Forecasts → Feature Engineering → Model Prediction     │
-└────────────────────┬────────────────────────────────────────────┘
+│    Fetch Forecasts → Feature Engineering → Model Prediction      │
+└────────────────────┬─────────────────────────────────────────────┘
                      ↓
-┌─────────────────────────────────────────────────────────────────┐
+┌──────────────────────────────────────────────────────────────────┐
 │         Interactive Dashboard (Streamlit Frontend)               │
-│  User Interface → Model Selection → Visualization → Predictions │
-└─────────────────────────────────────────────────────────────────┘
+│  User Interface → Model Selection → Visualization → Predictions  │
+└──────────────────────────────────────────────────────────────────┘
 ```
 
 ## 🛠️ Tech Stack
@@ -173,7 +173,7 @@ streamlit run inference_app.py
 ## 📊 Pipeline Components
 
 ### Data Pipeline (`dataset_pipeline.py`)
-Runs hourly via GitHub Actions workflow `data_pipeline.yml`
+Performs historical data backfill once + Runs hourly via GitHub Actions workflow `data_pipeline.yml`
 
 **Functionality:**
 - Fetches hourly weather and pollutant data from Open-Meteo API
