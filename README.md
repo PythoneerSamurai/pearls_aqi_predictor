@@ -37,7 +37,7 @@ The **AQI Prediction System** is a fully automated, serverless machine learning 
 ## ✨ Features
 
 ### Data Pipeline
-- **Hourly data ingestion** from Open-Meteo API
+- **Hourly data ingestion + Historical Data Backfill** from Open-Meteo API
 - **Automated feature engineering** with temporal, seasonal, and domain-specific features
 - **Feature store integration** with Hopsworks for scalable data management
 - **Duplicate prevention** using datetime-based primary keys
@@ -76,7 +76,7 @@ The **AQI Prediction System** is a fully automated, serverless machine learning 
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                    Data Ingestion (Hourly)                      │
+│ Hourly Data Backfill (One-time) + Data Ingestion (Hourly)        │
 │         GitHub Actions → Open-Meteo API → Weather & Pollutants │
 └─────────────────────┬────────────────────────────────────────────┘
                      ↓
