@@ -6,21 +6,6 @@
 ![Python Version](https://img.shields.io/badge/Python-3.8%2B-blue)
 ![Status](https://img.shields.io/badge/Status-Active-brightgreen)
 
-## 📋 Table of Contents
-
-- [Overview](#overview)
-- [Features](#features)
-- [System Architecture](#system-architecture)
-- [Tech Stack](#tech-stack)
-- [Getting Started](#getting-started)
-- [Pipeline Components](#pipeline-components)
-- [Model Performance](#model-performance)
-- [Project Structure](#project-structure)
-- [Configuration](#configuration)
-- [Deployment](#deployment)
-- [Contributing](#contributing)
-- [License](#license)
-
 ## 📌 Overview
 
 The **AQI Prediction System** is a fully automated, serverless machine learning application that forecasts hourly Air Quality Index (AQI) values for Rawalpindi, Pakistan. The system integrates data ingestion, feature engineering, model training, deployment, and interactive visualization in a seamless, production-ready pipeline.
@@ -151,7 +136,7 @@ The **AQI Prediction System** is a fully automated, serverless machine learning 
 4. **Configure Hopsworks**
    - Create a free account at [Hopsworks](https://www.hopsworks.ai/)
    - Generate an API key
-   - Add it as a GitHub Secret named `HOPSWORKS_API_KEY`
+   - Add it as a GitHub Secret named `API_KEY`
 
 ### Running Locally
 
@@ -190,9 +175,8 @@ Runs daily via GitHub Actions workflow `training_pipeline.yml`
 - Retrieves data from `aqi_hourly_features` feature group
 - Splits data into 90% train, 10% test sets
 - Trains five regression models with standard hyperparameters
-- Evaluates models using R² and MAE metrics
 - Manages model versioning and KSERVE deployment
-- Deploys best-performing model (XGBoost by default)
+- Deploys the trained models
 
 **Schedule:** Daily at configured time
 
@@ -233,115 +217,12 @@ Interactive web application for visualization
 ### Key Insights
 
 - **Tree-based ensemble methods** (XGBoost, Random Forest) significantly outperform linear and distance-based models
-- **XGBoost achieves state-of-the-art performance** with minimal prediction error
+- **XGBoost achieves excellent performance** with minimal prediction error
 - **Feature engineering is highly effective**, with pollutants and temporal features showing strong predictive power
 - **SHAP analysis reveals**:
   - PM2.5 and PM10 are the most influential features
   - Clear linear relationships between pollutants and AQI
   - Model predictions based on physically meaningful features
-
-## 📁 Project Structure
-
-```
-pearls_aqi_predictor/
-├── README.md                          # This file
-├── requirements.txt                   # Python dependencies
-├── .github/
-│   └── workflows/
-│       ├── data_pipeline.yml          # Hourly data ingestion workflow
-│       └── training_pipeline.yml      # Daily model training workflow
-├── dataset_pipeline.py                # Data ingestion & feature engineering
-├── training_pipeline.py               # Model training & deployment
-├── inference_app.py                   # Streamlit dashboard
-├── xgboost_predictor.py              # Custom XGBoost inference script
-├── notebooks/
-│   └── eda_analysis.ipynb            # Exploratory data analysis
-└── docs/
-    └── document.tex                   # Project report (LaTeX)
-```
-
-## ⚙️ Configuration
-
-### Target Location
-- **City**: Rawalpindi, Pakistan
-- **Latitude**: 33.5973
-- **Longitude**: 73.0479
-
-### Data Features
-
-#### Weather Features (Open-Meteo)
-- Temperature, Humidity, Wind Speed, Wind Direction
-- Atmospheric Pressure, Precipitation
-
-#### Pollutants (Open-Meteo)
-- PM2.5, PM10, CO, NO2, SO2, Ozone
-
-#### Engineered Features
-- **Temporal**: Hour, Day of Week, Month, Day of Year, Weekend Flag, Rush Hour Flag
-- **Seasonal**: Winter (0), Spring (1), Summer (2), Autumn (3)
-- **Wind**: U-component (east-west), V-component (north-south)
-- **Derived**: Stagnation Flag (wind speed < 2 m/s), Temperature-Humidity Product
-
-### Hyperparameters (Default)
-
-All models trained with standard hyperparameters:
-- `n_estimators`: 100
-- `random_state`: 42
-- `n_jobs`: -1 (parallel processing)
-
-## 🔐 Environment Variables & Secrets
-
-Configure the following GitHub Secrets for CI/CD:
-
-| Secret | Description |
-|--------|-------------|
-| `HOPSWORKS_API_KEY` | Hopsworks API key for feature store access |
-| `HOPSWORKS_PROJECT_NAME` | Hopsworks project name (optional) |
-
-## 🚢 Deployment
-
-### GitHub Actions Workflows
-
-#### Data Pipeline Workflow
-```yaml
-# Runs every hour at minute 5
-schedule:
-  - cron: '5 * * * *'
-```
-
-#### Training Pipeline Workflow
-```yaml
-# Runs daily at configured time (default: midnight UTC)
-schedule:
-  - cron: '0 0 * * *'
-```
-
-### Streamlit Deployment
-
-Deploy the Streamlit app to Streamlit Cloud:
-
-1. Push code to GitHub
-2. Visit [share.streamlit.io](https://share.streamlit.io)
-3. Deploy from your repository
-4. Configure secrets in Streamlit Cloud settings
-
-## 🎯 Prediction Strategy
-
-The system uses **hourly-level predictions** instead of direct daily forecasts:
-
-1. Models predict **hourly AQI values** for the next 72 hours
-2. Daily AQI is calculated as the **mean of 24 hourly predictions**
-3. This approach captures **intra-day pollution spikes** and is more robust
-4. Aligns with standard AQI calculation methodology
-
-## 🔍 Model Explainability
-
-SHAP (SHapley Additive exPlanations) analysis provides transparency:
-
-- **Most Important Features**: PM2.5, PM10, Temperature, Humidity
-- **Feature Impact**: Clear separation between high and low feature values
-- **Prediction Justification**: Each prediction is traceable to input features
-
 ## ⚠️ Challenges & Solutions
 
 | Challenge | Solution |
@@ -354,11 +235,6 @@ SHAP (SHapley Additive exPlanations) analysis provides transparency:
 
 - [ ] Alert system for hazardous AQI levels (SMS/Email notifications)
 - [ ] Deep learning models (LSTM) for time-series forecasting
-- [ ] Multi-city expansion with location-based APIs
-- [ ] Mobile app integration
-- [ ] Extended 7-day forecasts
-- [ ] Confidence intervals for predictions
-- [ ] Anomaly detection for data quality monitoring
 
 ## 📊 EDA Findings
 
@@ -366,44 +242,9 @@ Key observations from exploratory data analysis:
 
 - **Target Distribution**: AQI primarily in "Moderate" (0-50) and "Unhealthy for Sensitive Groups" (101-150) categories
 - **Feature Correlations**: PM2.5, PM10, SO2 show strongest positive correlation with AQI
-- **Temporal Patterns**: Distinct diurnal cycle with peaks in evening (increased emissions)
+- **Temporal Patterns**: Distinct diurnal cycle with peaks in the evening (increased emissions)
 - **Seasonal Trends**: Winter months exhibit 20-30% higher AQI (temperature inversions)
 - **Climate Impact**: Temperature shows moderate positive correlation; humidity shows negative correlation
-
-## 🤝 Contributing
-
-Contributions are welcome! Please follow these steps:
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your changes (`git commit -m 'Add AmazingFeature'`)
-4. Push to the branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
-
-## 📝 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## 👤 Author
-
-**Haroon Rashid**
-
-- GitHub: [@PythoneerSamurai](https://github.com/PythoneerSamurai)
-
-## 🙏 Acknowledgments
-
-- [Open-Meteo](https://open-meteo.com/) - Free weather & air quality data
-- [Hopsworks](https://www.hopsworks.ai/) - Feature store & model registry
-- [Streamlit](https://streamlit.io/) - Interactive dashboard framework
-- [XGBoost](https://xgboost.readthedocs.io/) - Gradient boosting library
-- [SHAP](https://shap.readthedocs.io/) - Model explainability
-
-## 📧 Contact & Support
-
-For questions, issues, or suggestions:
-- Open an issue on GitHub
-- Contact the project maintainer
-
 ---
 
 **Last Updated**: 2026-05-24 | **Status**: Active & Maintained
